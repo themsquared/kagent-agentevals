@@ -1,0 +1,43 @@
+# LLM-as-judge suite. Unlike suites/quickstart.yaml this one calls a model, so
+# it needs a provider package and an API key:
+#
+#   pip install -e '.[anthropic]'
+#   export ANTHROPIC_API_KEY=...
+#   kagent-evals run suites/demo-llm-judge.yaml
+#
+# It scores the same checked-in fixture, so no cluster is needed.
+#
+# NOT VALIDATED against a live model. Prompt selection, scoring and thresholds
+# are unit-tested, but run this yourself before putting it in CI.
+name: llm-judge
+source:
+  kind: fixture
+  path: tests/fixtures/github-assistant-session.jsonl
+
+defaults:
+  # Cheap model on purpose: a judge runs on every session.
+  judge_model: anthropic:claude-haiku-4-5-20251001
+
+cases:
+  # Reference-free grading of the turn that worked: "is this trajectory
+  # coherent and reasonably efficient?"
+  - name: retry-trajectory-is-sane
+    session_id: fixture
+    invocation_id: e-c51ee408-e4c2-4bee-91aa-feb52996931c
+    evaluators:
+      - type: llm_judge
+        name: accuracy
+        continuous: true
+        threshold: 0.7
+
+  # The first attempt burned a turn on a clarifying question it did not need.
+  # A judge should mark this down — which makes it a good check that the judge
+  # is actually discriminating rather than rubber-stamping.
+  - name: first-attempt-was-inefficient
+    session_id: fixture
+    invocation_id: e-525e129f-064a-4b57-8c45-8e342ca6c93f
+    evaluators:
+      - type: llm_judge
+        name: accuracy
+        continuous: true
+        threshold: 0.7

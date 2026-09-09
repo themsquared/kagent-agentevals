@@ -1,0 +1,75 @@
+# Run a golden suite on a schedule inside the cluster.
+#
+# Uses the `postgres` source (direct DSN) rather than `kubectl`, so the Job
+# needs no RBAC on pods/exec — only network access to kagent's Postgres.
+#
+# Build the image first, e.g.:
+#   docker build -t <registry>/kagent-agentevals:0.1.0 .
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kagent-evals-suite
+  namespace: kagent
+data:
+  suite.yaml: |
+    name: nightly
+    source:
+      kind: postgres
+    cases:
+      - name: weather-used-the-weather-tool
+        session_id: REPLACE-WITH-A-SESSION-ID
+        evaluators:
+          - type: tools_used
+            mode: superset
+            expected:
+              - get-weather-by-city_get-weather-by-city
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: kagent-evals
+  namespace: kagent
+spec:
+  schedule: "0 6 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: evals
+              image: REPLACE-WITH-YOUR-REGISTRY/kagent-agentevals:0.1.0
+              args: ["run", "/suites/suite.yaml", "--format", "junit"]
+              env:
+                - name: KAGENT_EVALS_SOURCE
+                  value: postgres
+                - name: KAGENT_DB_DSN
+                  valueFrom:
+                    secretKeyRef:
+                      name: kagent-evals-db
+                      key: dsn
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  memory: 512Mi
+              volumeMounts:
+                - name: suite
+                  mountPath: /suites
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                runAsUser: 65532
+                capabilities:
+                  drop: ["ALL"]
+          volumes:
+            - name: suite
+              configMap:
+                name: kagent-evals-suite

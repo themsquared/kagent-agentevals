@@ -1,0 +1,77 @@
+# Live-cluster suite: reads sessions straight out of kagent's Postgres via
+# `kubectl exec`. No LLM calls, no API keys.
+#
+# The session ids below are from one particular demo cluster and will not exist
+# in yours. Find your own with:
+#
+#   kagent-evals sessions
+#   kagent-evals extract <session-id> --list-invocations
+#
+# For a suite that runs anywhere with no cluster, see suites/quickstart.yaml.
+#
+# Note on `strict`: agentevals compares message count, roles, and tool calls
+# (names + args). It does NOT compare assistant prose, so the `content` fields
+# in a reference trajectory are documentation for whoever reads the suite.
+name: live-cluster
+source:
+  kind: kubectl
+  namespace: kagent
+
+defaults:
+  drop_internal_tools: true
+
+cases:
+  - name: weather-shape-and-args
+    session_id: f25e1c01-bcfa-431f-8572-38a7120dd1c8
+    evaluators:
+      - type: trajectory_match
+        name: strict-with-args
+        mode: strict
+        tool_args_match_mode: exact
+        reference:
+          - role: user
+            content: current weather in London
+          - role: assistant
+            content: ""
+            tool_calls:
+              - type: function
+                function:
+                  name: get-weather-by-city_get-weather-by-city
+                  arguments: '{"city": "London"}'
+          - role: tool
+            content: "Weather in London: ..."
+          - role: assistant
+            content: (final answer)
+
+  - name: weather-used-the-weather-tool
+    session_id: f25e1c01-bcfa-431f-8572-38a7120dd1c8
+    evaluators:
+      - type: tools_used
+        name: calls-weather-tool
+        mode: superset
+        expected:
+          - get-weather-by-city_get-weather-by-city
+
+  # Scoped to the second invocation: the retry turn where the agent finally
+  # reaches for search_users instead of asking the user a question.
+  - name: github-retry-uses-search
+    session_id: 01a06907-ee15-7285-b42d-157855337abc
+    invocation_id: e-c51ee408-e4c2-4bee-91aa-feb52996931c
+    evaluators:
+      - type: tools_used
+        name: calls-search-users
+        mode: superset
+        expected:
+          - search_users
+
+  # Whole-session view. ask_user is a real kagent tool, so it stays in the
+  # trajectory; only adk_* runtime plumbing is filtered.
+  - name: github-whole-session
+    session_id: 01a06907-ee15-7285-b42d-157855337abc
+    evaluators:
+      - type: tools_used
+        name: no-unexpected-tools
+        mode: subset
+        expected:
+          - ask_user
+          - search_users

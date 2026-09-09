@@ -1,0 +1,67 @@
+# Runs with no cluster: the session is a JSONL fixture checked into the repo.
+#
+#   kagent-evals run suites/quickstart.yaml
+#
+# This is the suite to run first, and the one CI runs.
+name: quickstart
+source:
+  kind: fixture
+  path: tests/fixtures/github-assistant-session.jsonl
+
+cases:
+  # The agent's first attempt burned a turn asking a clarifying question.
+  - name: first-attempt-asks-the-user
+    session_id: fixture
+    invocation_id: e-525e129f-064a-4b57-8c45-8e342ca6c93f
+    evaluators:
+      - type: tools_used
+        name: asked-instead-of-searching
+        mode: subset
+        expected:
+          - ask_user
+
+  # On the retry it reaches for the real tool.
+  - name: retry-searches-github
+    session_id: fixture
+    invocation_id: e-c51ee408-e4c2-4bee-91aa-feb52996931c
+    evaluators:
+      - type: tools_used
+        name: calls-search-users
+        mode: superset
+        expected:
+          - search_users
+
+  # Whole session: exactly two tools, and nothing else.
+  - name: whole-session-tool-budget
+    session_id: fixture
+    evaluators:
+      - type: tools_used
+        name: no-unexpected-tools
+        mode: subset
+        expected:
+          - ask_user
+          - search_users
+
+  # Full shape check on the retry turn, arguments included.
+  - name: retry-shape-and-args
+    session_id: fixture
+    invocation_id: e-c51ee408-e4c2-4bee-91aa-feb52996931c
+    evaluators:
+      - type: trajectory_match
+        name: strict-with-args
+        mode: strict
+        tool_args_match_mode: exact
+        reference:
+          - role: user
+            content: Try again
+          - role: assistant
+            content: ""
+            tool_calls:
+              - type: function
+                function:
+                  name: search_users
+                  arguments: '{"query": "themsquared"}'
+          - role: tool
+            content: "(github search results)"
+          - role: assistant
+            content: "(final answer)"

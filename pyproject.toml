@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "kagent-agentevals"
+version = "0.1.0"
+description = "Score kagent agent trajectories with LangChain's agentevals"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "agentevals>=0.0.9",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+postgres = ["psycopg[binary]>=3.1"]
+anthropic = ["langchain-anthropic>=0.3"]
+openai = ["langchain-openai>=0.3"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+kagent-evals = "kagent_evals.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kagent_evals"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
