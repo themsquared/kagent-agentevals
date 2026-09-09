@@ -21,3 +21,7 @@ jobs:
       # The quickstart suite needs no cluster and no API key, so CI runs the
       # real evaluators against the checked-in fixture.
       - run: kagent-evals run suites/quickstart.yaml
+      # The customer demo is a deliverable, so CI runs it end to end.
+      - run: ./demo/run.sh --fast
+        env:
+          NO_COLOR: "1"

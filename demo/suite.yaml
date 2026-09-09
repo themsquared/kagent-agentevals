@@ -1,0 +1,61 @@
+# One suite, three sessions.
+#
+# This is the whole point of the demo: the assertions never change. Point the
+# same suite at a different session and it tells you whether the agent still
+# behaves.
+#
+#   kagent-evals run demo/suite.yaml --fixture demo/fixtures/weather-grounded.jsonl
+#   kagent-evals run demo/suite.yaml --fixture demo/fixtures/weather-ungrounded.jsonl
+#   kagent-evals run demo/suite.yaml --fixture demo/fixtures/weather-wrong-city.jsonl
+#
+# Against a real cluster, drop --fixture and set source.kind to kubectl.
+name: weather-assistant
+source:
+  kind: fixture
+  path: demo/fixtures/weather-grounded.jsonl
+
+cases:
+  # The contract: a weather answer must come from the weather tool, not from
+  # the model's imagination.
+  - name: answer-is-grounded-in-a-tool-call
+    session_id: fixture
+    evaluators:
+      - type: tools_used
+        name: called-the-weather-tool
+        mode: superset
+        expected:
+          - get-weather-by-city_get-weather-by-city
+
+  # The tool budget: exactly this tool, nothing else. Catches an agent that
+  # starts reaching for tools it was never meant to touch.
+  - name: stayed-within-its-tool-budget
+    session_id: fixture
+    evaluators:
+      - type: tools_used
+        name: no-unexpected-tools
+        mode: subset
+        expected:
+          - get-weather-by-city_get-weather-by-city
+
+  # The full contract, arguments included: asked about London, looked up London.
+  - name: looked-up-the-city-the-user-asked-about
+    session_id: fixture
+    evaluators:
+      - type: trajectory_match
+        name: strict-with-args
+        mode: strict
+        tool_args_match_mode: exact
+        reference:
+          - role: user
+            content: current weather in London
+          - role: assistant
+            content: ""
+            tool_calls:
+              - type: function
+                function:
+                  name: get-weather-by-city_get-weather-by-city
+                  arguments: '{"city": "London"}'
+          - role: tool
+            content: "(weather for London)"
+          - role: assistant
+            content: "(grounded answer)"

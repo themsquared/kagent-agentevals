@@ -22,12 +22,15 @@ from __future__ import annotations
 
 import json
 from collections import OrderedDict
+from dataclasses import dataclass
 from typing import Any, Iterable, Sequence
 
 __all__ = [
     "ADK_INTERNAL_PREFIX",
+    "EventSummary",
     "event_stream_to_trajectory",
     "split_by_invocation",
+    "summarize_events",
     "tool_call_names",
 ]
 
@@ -235,3 +238,92 @@ def tool_call_names(trajectory: Sequence[dict[str, Any]]) -> list[str]:
         for call in message.get("tool_calls") or []:
             names.append(call.get("function", {}).get("name", ""))
     return names
+
+
+@dataclass
+class EventSummary:
+    """One row of a human-readable account of what an event contributed."""
+
+    index: int
+    author: str
+    role: str
+    invocation_id: str
+    parts: list[str]
+    reason: str  # empty when the event contributed at least one message
+
+    @property
+    def kept(self) -> bool:
+        return not self.reason
+
+
+def summarize_events(
+    events: Iterable[dict[str, Any]],
+    *,
+    drop_internal_tools: bool = True,
+    extra_tool_denylist: Sequence[str] = (),
+    include_partial: bool = False,
+) -> list[EventSummary]:
+    """Explain, event by event, what the converter does with a session.
+
+    Raw ADK events serialise every optional field, so dumping them is unreadable.
+    This is the view you actually want when working out why a trajectory looks
+    the way it does. It reuses the converter's own skip predicates, so the two
+    cannot drift apart.
+    """
+    summaries: list[EventSummary] = []
+
+    for index, event in enumerate(events):
+        author = str(event.get("author") or "")
+        content = event.get("content")
+        role = str(content.get("role") or "") if isinstance(content, dict) else ""
+        invocation = str(event.get("invocation_id") or "")
+
+        if _skip_event(event, include_partial):
+            if not include_partial and event.get("partial"):
+                reason = "streaming partial"
+            elif not isinstance(content, dict):
+                reason = "no content"
+            else:
+                reason = "no parts"
+            summaries.append(
+                EventSummary(index, author, role, invocation, [], reason)
+            )
+            continue
+
+        parts: list[str] = []
+        dropped_names: list[str] = []
+        for part in content["parts"]:
+            if not isinstance(part, dict):
+                continue
+            call = part.get("function_call")
+            response = part.get("function_response")
+            text = part.get("text")
+
+            if isinstance(response, dict):
+                name = response.get("name") or "?"
+                if _is_internal(name, drop_internal_tools, extra_tool_denylist):
+                    dropped_names.append(name)
+                else:
+                    parts.append(f"result {name}")
+            elif isinstance(call, dict):
+                name = call.get("name") or "?"
+                if _is_internal(name, drop_internal_tools, extra_tool_denylist):
+                    dropped_names.append(name)
+                else:
+                    parts.append(f"call {name}")
+            elif isinstance(text, str) and text.strip():
+                snippet = " ".join(text.split())
+                if len(snippet) > 44:
+                    snippet = snippet[:43] + "…"
+                parts.append(f'text "{snippet}"')
+
+        reason = ""
+        if not parts:
+            reason = (
+                f"filtered: {', '.join(sorted(set(dropped_names)))}"
+                if dropped_names
+                else "nothing scorable"
+            )
+        summaries.append(EventSummary(index, author, role, invocation, parts, reason))
+
+    return summaries

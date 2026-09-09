@@ -11,7 +11,12 @@ from .report import exit_code, render_json, render_junit, render_table
 from .runner import run_suite
 from .sources import build_source
 from .suite import load_suite
-from .trajectory import event_stream_to_trajectory, split_by_invocation, tool_call_names
+from .trajectory import (
+    event_stream_to_trajectory,
+    split_by_invocation,
+    summarize_events,
+    tool_call_names,
+)
 
 
 def _source_overrides(args: argparse.Namespace) -> dict[str, object]:
@@ -79,6 +84,34 @@ def cmd_extract(args: argparse.Namespace) -> int:
             print(f"invocation {args.invocation_id} not found", file=sys.stderr)
             return 1
         events = grouped[args.invocation_id]
+
+    if args.summary:
+        summaries = summarize_events(
+            events,
+            drop_internal_tools=not args.include_internal,
+            extra_tool_denylist=tuple(args.drop_tool or ()),
+        )
+        kept = sum(1 for s in summaries if s.kept)
+        print(f"{'#':>3}  {'AUTHOR':<20} {'ROLE':<6} {'CONTRIBUTED':<46} WHY NOT")
+        for item in summaries:
+            contributed = "; ".join(item.parts)
+            if len(contributed) > 45:
+                contributed = contributed[:44] + "\u2026"
+            print(
+                f"{item.index:>3}  {item.author[:20]:<20} {item.role[:6]:<6} "
+                f"{contributed:<46} {item.reason}"
+            )
+        trajectory = event_stream_to_trajectory(
+            events,
+            drop_internal_tools=not args.include_internal,
+            extra_tool_denylist=tuple(args.drop_tool or ()),
+        )
+        print(
+            f"\n{len(summaries)} events, {kept} contributed \u2192 "
+            f"{len(trajectory)} messages, "
+            f"tools: {', '.join(tool_call_names(trajectory)) or '(none)'}"
+        )
+        return 0
 
     if args.raw:
         lines = "\n".join(json.dumps(e, ensure_ascii=False) for e in events)
@@ -150,6 +183,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_extract.add_argument(
         "--drop-tool", action="append", help="also drop this tool name (repeatable)"
+    )
+    p_extract.add_argument(
+        "--summary",
+        action="store_true",
+        help="show what the converter does with each event, and why anything is dropped",
     )
     p_extract.add_argument(
         "--raw",

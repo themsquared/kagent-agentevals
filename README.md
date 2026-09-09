@@ -45,6 +45,30 @@ retry-shape-and-args  [session fixture / inv e-c51ee408-e]
 That suite scores a real captured session out of `tests/fixtures/`, so there is
 nothing to install and nothing to stand up. Exit code is non-zero on failure.
 
+## The demo
+
+The quickstart above only ever goes green, which proves the plumbing works but
+not that the evals are worth anything. `make demo` is the version that shows the
+point: **one suite, three sessions, two caught regressions.**
+
+```bash
+make demo          # paused between acts, for talking over
+make demo-fast     # straight through, to check it still works
+```
+
+Same three assertions throughout. Only the session changes:
+
+| Session | Result |
+| --- | --- |
+| the real captured session | 3/3 pass |
+| the agent answered without calling the tool | **caught** — exit 1 |
+| the agent called the tool for the wrong city | **caught** — exit 1 |
+
+The middle one is the failure mode that matters: a confident, plausible,
+completely invented answer that still looks fine in the UI. See
+[demo/README.md](demo/README.md) for the talk track and how to point it at your
+own agent.
+
 ## What the conversion actually involves
 
 kagent writes one row per ADK event, with the event JSON in `event.data`:
@@ -95,6 +119,9 @@ Pick one with `--source` (or `--fixture <path>`, or `KAGENT_EVALS_SOURCE`).
 ```bash
 # what is there to score?
 kagent-evals sessions --agent weather
+
+# what does the converter do with this session, and why is anything dropped?
+kagent-evals extract <session-id> --summary
 
 # split a session into invocations (one invocation = one user turn plus
 # everything the agent did in response — usually the right unit to score)
@@ -178,7 +205,8 @@ pip install -e '.[dev]'
 python -m pytest
 ```
 
-32 tests. The fixture is a real 14-event session captured from a live kagent
+42 tests, including guards that fail if the demo stops demonstrating anything.
+The fixture is a real 14-event session captured from a live kagent
 cluster, so the converter is pinned against data the runtime actually produces
 rather than against a guess at the schema.
 
