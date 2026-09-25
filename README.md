@@ -5,6 +5,8 @@ LangChain's [agentevals](https://github.com/langchain-ai/agentevals).
 
 [![ci](https://github.com/themsquared/kagent-agentevals/actions/workflows/ci.yaml/badge.svg)](https://github.com/themsquared/kagent-agentevals/actions/workflows/ci.yaml)
 
+> 📖 **Read the write-up:** [Regression Tests for kagent Agents with agentevals](https://webofmike.com/kagent-trajectory-evals/)
+
 agentevals is an offline scoring library: hand it a trajectory as a list of
 OpenAI-format chat messages and it tells you whether the agent did the right
 thing. kagent records its sessions as Google ADK events. This is the bridge —
